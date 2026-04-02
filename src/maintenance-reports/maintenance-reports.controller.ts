@@ -1,0 +1,24 @@
+import { Body, Controller, Post } from '@nestjs/common';
+import { CreateMaintenanceReportDto } from '../common/dto/create-maintenance-report.dto';
+import { MaintenanceReportsService } from './maintenance-reports.service';
+
+@Controller('maintenance-reports')
+export class MaintenanceReportsController {
+  constructor(
+    private readonly maintenanceReportsService: MaintenanceReportsService,
+  ) {}
+
+  @Post()
+  async create(@Body() payload: CreateMaintenanceReportDto) {
+    const report = await this.maintenanceReportsService.create(payload);
+
+    return {
+      success: true,
+      message: 'Maintenance report submitted successfully',
+      data: {
+        reportCode: report.reportCode,
+        submittedAt: report.submittedAt,
+      },
+    };
+  }
+}
