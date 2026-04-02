@@ -17,6 +17,14 @@ type MaintenanceReportPhoto = {
   dataUrl: string;
 };
 
+type MaintenanceReportNote = {
+  id: string;
+  at: string;
+  author: string;
+  kind: 'system' | 'dispatch' | 'review' | 'finance';
+  text: string;
+};
+
 @Entity({ name: 'maintenance_reports' })
 export class MaintenanceReport {
   @PrimaryGeneratedColumn('uuid')
@@ -45,6 +53,12 @@ export class MaintenanceReport {
   @Column({ type: 'varchar', length: 40, default: 'pending' })
   status: string;
 
+  @Column({ type: 'varchar', length: 20, default: 'Medium' })
+  priority: string;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  assignedTo: string | null;
+
   @Column({ type: 'text', nullable: true })
   findings: string | null;
 
@@ -65,6 +79,9 @@ export class MaintenanceReport {
 
   @Column({ type: 'text', nullable: true })
   customerSignature: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  internalNotes: MaintenanceReportNote[] | null;
 
   @Column({ type: 'timestamp without time zone', default: () => 'CURRENT_TIMESTAMP' })
   submittedAt: Date;

@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { AuthModule } from './auth/auth.module';
 import { Building } from './common/entities/building.entity';
 import { Equipment } from './common/entities/equipment.entity';
 import { MaintenanceReport } from './common/entities/maintenance-report.entity';
@@ -28,6 +29,7 @@ import { MaintenanceReportsModule } from './maintenance-reports/maintenance-repo
         synchronize: configService.get<string>('DB_SYNC', 'true') === 'true',
       }),
     }),
+    AuthModule,
     EquipmentModule,
     MaintenanceReportsModule,
   ],
