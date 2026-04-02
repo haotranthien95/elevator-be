@@ -11,6 +11,7 @@ const REPORT_CODE_PREFIX = 'MSR';
 const REPORT_CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const REPORT_CODE_LENGTH = 8;
 const REPORT_CODE_MAX_ATTEMPTS = 10;
+const INITIAL_REPORT_STATUS = 'pending';
 
 @Injectable()
 export class MaintenanceReportsService {
@@ -62,6 +63,16 @@ export class MaintenanceReportsService {
       throw new NotFoundException('Equipment not found for selected building');
     }
 
+    const normalizedPhotos =
+      payload.photos
+        ?.filter((photo) => photo.dataUrl.startsWith('data:image/'))
+        .map((photo) => ({
+          name: photo.name,
+          mimeType: photo.mimeType,
+          size: Number(photo.size),
+          dataUrl: photo.dataUrl,
+        })) ?? [];
+
     const report = this.reportRepository.create({
       building,
       equipment,
@@ -69,6 +80,7 @@ export class MaintenanceReportsService {
       maintenanceType: payload.maintenanceType,
       arrivalDateTime: new Date(payload.arrivalDateTime),
       technicianName: payload.technicianName,
+      status: INITIAL_REPORT_STATUS,
       findings: payload.findings ?? null,
       workPerformed: payload.workPerformed ?? null,
       partsUsed:
@@ -77,6 +89,9 @@ export class MaintenanceReportsService {
           quantity: Number(part.quantity),
         })) ?? null,
       remarks: payload.remarks ?? null,
+      photos: normalizedPhotos.length > 0 ? normalizedPhotos : null,
+      technicianSignature: payload.technicianSignature ?? null,
+      customerSignature: payload.customerSignature ?? null,
     });
 
     return this.reportRepository.save(report);

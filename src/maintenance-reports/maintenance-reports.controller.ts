@@ -17,6 +17,10 @@ export class MaintenanceReportsController {
       message: 'Maintenance report submitted successfully',
       data: {
         reportCode: report.reportCode,
+        status: report.status,
+        photoCount: report.photos?.length ?? 0,
+        hasTechnicianSignature: Boolean(report.technicianSignature),
+        hasCustomerSignature: Boolean(report.customerSignature),
         submittedAt: report.submittedAt,
       },
     };

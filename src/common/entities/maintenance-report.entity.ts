@@ -10,6 +10,13 @@ import {
 import { Equipment } from './equipment.entity';
 import { Building } from './building.entity';
 
+type MaintenanceReportPhoto = {
+  name: string;
+  mimeType: string;
+  size: number;
+  dataUrl: string;
+};
+
 @Entity({ name: 'maintenance_reports' })
 export class MaintenanceReport {
   @PrimaryGeneratedColumn('uuid')
@@ -35,6 +42,9 @@ export class MaintenanceReport {
   @Column({ type: 'varchar', length: 120 })
   technicianName: string;
 
+  @Column({ type: 'varchar', length: 40, default: 'pending' })
+  status: string;
+
   @Column({ type: 'text', nullable: true })
   findings: string | null;
 
@@ -46,6 +56,15 @@ export class MaintenanceReport {
 
   @Column({ type: 'text', nullable: true })
   remarks: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  photos: MaintenanceReportPhoto[] | null;
+
+  @Column({ type: 'text', nullable: true })
+  technicianSignature: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  customerSignature: string | null;
 
   @Column({ type: 'timestamp without time zone', default: () => 'CURRENT_TIMESTAMP' })
   submittedAt: Date;
