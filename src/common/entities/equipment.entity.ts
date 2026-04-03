@@ -1,5 +1,13 @@
-import { Column, Entity, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { Building } from './building.entity';
+import { EquipmentType } from './equipment-type.entity';
 import { MaintenanceReport } from './maintenance-report.entity';
 
 @Entity({ name: 'equipment' })
@@ -9,6 +17,13 @@ export class Equipment {
 
   @Column({ type: 'varchar', length: 80 })
   equipmentType: string;
+
+  @ManyToOne(() => EquipmentType, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({ name: 'equipmentTypeId' })
+  equipmentTypeInfo: EquipmentType | null;
 
   @Column({ type: 'varchar', length: 80 })
   equipmentCode: string;

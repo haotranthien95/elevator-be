@@ -1,6 +1,8 @@
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsNotEmpty,
   IsNumber,
@@ -9,6 +11,7 @@ import {
   IsUUID,
   Matches,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -49,6 +52,58 @@ class ReportPhotoDto {
   dataUrl: string;
 }
 
+class ChecklistResultItemDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  label: string;
+
+  @Type(() => Boolean)
+  @IsBoolean()
+  checked: boolean;
+}
+
+class ChecklistResultCategoryDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(80)
+  category: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => ChecklistResultItemDto)
+  items: ChecklistResultItemDto[];
+}
+
+class ChecklistResultsDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  equipmentType?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  templateName?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  checkedCount: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  totalCount: number;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => ChecklistResultCategoryDto)
+  categories: ChecklistResultCategoryDto[];
+}
+
 export class CreateMaintenanceReportDto {
   @IsUUID()
   buildingId: string;
@@ -66,6 +121,11 @@ export class CreateMaintenanceReportDto {
   @IsString()
   @IsNotEmpty()
   technicianName: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ChecklistResultsDto)
+  checklistResults?: ChecklistResultsDto;
 
   @IsOptional()
   @IsString()

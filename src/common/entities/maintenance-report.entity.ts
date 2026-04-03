@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Equipment } from './equipment.entity';
 import { Building } from './building.entity';
+import { Technician } from './technician.entity';
 
 type MaintenanceReportPhoto = {
   name: string;
@@ -23,6 +24,24 @@ type MaintenanceReportNote = {
   author: string;
   kind: 'system' | 'dispatch' | 'review' | 'finance';
   text: string;
+};
+
+type MaintenanceReportChecklistItem = {
+  label: string;
+  checked: boolean;
+};
+
+type MaintenanceReportChecklistCategory = {
+  category: string;
+  items: MaintenanceReportChecklistItem[];
+};
+
+type MaintenanceReportChecklistResults = {
+  equipmentType: string | null;
+  templateName: string | null;
+  checkedCount: number;
+  totalCount: number;
+  categories: MaintenanceReportChecklistCategory[];
 };
 
 @Entity({ name: 'maintenance_reports' })
@@ -59,8 +78,15 @@ export class MaintenanceReport {
   @Column({ type: 'varchar', length: 120, nullable: true })
   assignedTo: string | null;
 
+  @ManyToOne(() => Technician, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'assigned_technician_id' })
+  assignedTechnician: Technician | null;
+
   @Column({ type: 'text', nullable: true })
   findings: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  checklistResults: MaintenanceReportChecklistResults | null;
 
   @Column({ type: 'text', nullable: true })
   workPerformed: string | null;

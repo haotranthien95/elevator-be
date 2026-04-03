@@ -5,17 +5,19 @@ import { AuthModule } from '../auth/auth.module';
 import { Building } from '../common/entities/building.entity';
 import { Equipment } from '../common/entities/equipment.entity';
 import { MaintenanceReport } from '../common/entities/maintenance-report.entity';
+import { Schedule } from '../common/entities/schedule.entity';
 import { Technician } from '../common/entities/technician.entity';
-import { MaintenanceReportsController } from './maintenance-reports.controller';
-import { MaintenanceReportsService } from './maintenance-reports.service';
+import { SchedulesController } from './schedules.controller';
+import { SchedulesService } from './schedules.service';
 
 @Module({
   imports: [
     AuditModule,
     AuthModule,
-    TypeOrmModule.forFeature([MaintenanceReport, Building, Equipment, Technician]),
+    TypeOrmModule.forFeature([Schedule, Building, Equipment, MaintenanceReport, Technician]),
   ],
-  controllers: [MaintenanceReportsController],
-  providers: [MaintenanceReportsService],
+  controllers: [SchedulesController],
+  providers: [SchedulesService],
+  exports: [SchedulesService],
 })
-export class MaintenanceReportsModule {}
+export class SchedulesModule {}

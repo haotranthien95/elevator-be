@@ -2,13 +2,16 @@ import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Building } from '../common/entities/building.entity';
+import { EquipmentType } from '../common/entities/equipment-type.entity';
 import { Equipment } from '../common/entities/equipment.entity';
 import {
   CreateBuildingDto,
   CreateEquipmentAdminDto,
+  CreateEquipmentTypeDto,
   ListAdminEquipmentQueryDto,
   UpdateBuildingDto,
   UpdateEquipmentAdminDto,
+  UpdateEquipmentTypeDto,
 } from './dto/admin-master-data.dto';
 
 @Injectable()
@@ -16,6 +19,8 @@ export class EquipmentService implements OnModuleInit {
   constructor(
     @InjectRepository(Building)
     private readonly buildingRepository: Repository<Building>,
+    @InjectRepository(EquipmentType)
+    private readonly equipmentTypeRepository: Repository<EquipmentType>,
     @InjectRepository(Equipment)
     private readonly equipmentRepository: Repository<Equipment>,
   ) {}
@@ -25,9 +30,105 @@ export class EquipmentService implements OnModuleInit {
     return normalized ? normalized : null;
   }
 
+  private async findEquipmentTypeOrThrow(
+    equipmentTypeId?: string,
+    equipmentTypeName?: string,
+  ): Promise<EquipmentType> {
+    let equipmentType: EquipmentType | null = null;
+
+    if (equipmentTypeId) {
+      equipmentType = await this.equipmentTypeRepository.findOne({
+        where: { id: equipmentTypeId },
+      });
+    }
+
+    if (!equipmentType && equipmentTypeName?.trim()) {
+      equipmentType = await this.equipmentTypeRepository
+        .createQueryBuilder('equipmentType')
+        .where('LOWER(equipmentType.name) = LOWER(:name)', {
+          name: equipmentTypeName.trim(),
+        })
+        .getOne();
+    }
+
+    if (!equipmentType) {
+      throw new NotFoundException(
+        'Equipment type not found. Please create it in the Equipment Types library first.',
+      );
+    }
+
+    return equipmentType;
+  }
+
+  private async syncEquipmentTypeRelations(): Promise<void> {
+    const managedTypes = await this.equipmentTypeRepository.find();
+    if (managedTypes.length === 0) {
+      return;
+    }
+
+    const typeMap = new Map(
+      managedTypes.map((item) => [item.name.trim().toLowerCase(), item]),
+    );
+
+    const equipmentItems = await this.equipmentRepository.find({
+      relations: ['equipmentTypeInfo'],
+    });
+
+    const pendingUpdates = equipmentItems
+      .filter((item) => !item.equipmentTypeInfo && item.equipmentType)
+      .map((item) => {
+        const match = typeMap.get(item.equipmentType.trim().toLowerCase());
+        if (!match) {
+          return null;
+        }
+
+        item.equipmentTypeInfo = match;
+        item.equipmentType = match.name;
+        return item;
+      })
+      .filter((item): item is Equipment => item !== null);
+
+    if (pendingUpdates.length > 0) {
+      await this.equipmentRepository.save(pendingUpdates);
+    }
+  }
+
   async onModuleInit(): Promise<void> {
+    const equipmentTypeCount = await this.equipmentTypeRepository.count();
+    if (equipmentTypeCount === 0) {
+      await this.equipmentTypeRepository.save([
+        {
+          name: 'Elevator',
+          code: 'ELEV',
+          description: 'Passenger and service elevator systems',
+          category: 'Vertical Transport',
+          isActive: true,
+        },
+        {
+          name: 'Escalator',
+          code: 'ESCA',
+          description: 'Escalator and moving walk systems',
+          category: 'People Moving',
+          isActive: true,
+        },
+        {
+          name: 'Dumbwaiter',
+          code: 'DUMB',
+          description: 'Small goods lift equipment',
+          category: 'Service Lift',
+          isActive: true,
+        },
+      ]);
+    }
+
+    const allTypes = await this.equipmentTypeRepository.find();
+    const typesByName = new Map(
+      allTypes.map((item) => [item.name.trim().toLowerCase(), item]),
+    );
+
     const buildingCount = await this.buildingRepository.count();
     if (buildingCount > 0) {
+      await this.syncEquipmentTypeRelations();
       return;
     }
 
@@ -53,6 +154,7 @@ export class EquipmentService implements OnModuleInit {
     await this.equipmentRepository.save([
       {
         equipmentType: 'Elevator',
+        equipmentTypeInfo: typesByName.get('elevator') ?? null,
         equipmentCode: 'ELV-001',
         serialNumber: 'SN-YGN-001',
         brand: 'Mitsubishi',
@@ -63,6 +165,7 @@ export class EquipmentService implements OnModuleInit {
       },
       {
         equipmentType: 'Elevator',
+        equipmentTypeInfo: typesByName.get('elevator') ?? null,
         equipmentCode: 'ELV-002',
         serialNumber: 'SN-YGN-002',
         brand: 'Hitachi',
@@ -73,6 +176,7 @@ export class EquipmentService implements OnModuleInit {
       },
       {
         equipmentType: 'Escalator',
+        equipmentTypeInfo: typesByName.get('escalator') ?? null,
         equipmentCode: 'ESC-010',
         serialNumber: 'SN-MDY-010',
         brand: 'Otis',
@@ -82,6 +186,8 @@ export class EquipmentService implements OnModuleInit {
         building: buildingB,
       },
     ]);
+
+    await this.syncEquipmentTypeRelations();
   }
 
   async getBuildings(): Promise<Building[]> {
@@ -140,13 +246,85 @@ export class EquipmentService implements OnModuleInit {
     return this.buildingRepository.save(building);
   }
 
-  async getEquipmentTypes(): Promise<Array<{ equipmentType: string }>> {
+  async getEquipmentTypes(): Promise<Array<{ equipmentType: string; id?: string; code?: string | null; category?: string | null; isActive?: boolean }>> {
+    const managedTypes = await this.equipmentTypeRepository.find({
+      order: { name: 'ASC' },
+    });
+
+    if (managedTypes.length > 0) {
+      return managedTypes.map((type) => ({
+        id: type.id,
+        equipmentType: type.name,
+        code: type.code,
+        category: type.category,
+        isActive: type.isActive,
+      }));
+    }
+
     return this.equipmentRepository
       .createQueryBuilder('equipment')
       .select('equipment.equipmentType', 'equipmentType')
       .distinct(true)
       .orderBy('equipment.equipmentType', 'ASC')
       .getRawMany();
+  }
+
+  async getAdminEquipmentTypes(): Promise<EquipmentType[]> {
+    return this.equipmentTypeRepository.find({
+      order: { name: 'ASC' },
+    });
+  }
+
+  async createEquipmentType(payload: CreateEquipmentTypeDto): Promise<EquipmentType> {
+    const equipmentType = this.equipmentTypeRepository.create({
+      name: payload.name.trim(),
+      code: this.normalizeOptionalText(payload.code),
+      description: this.normalizeOptionalText(payload.description),
+      category: this.normalizeOptionalText(payload.category),
+      isActive: payload.isActive ?? true,
+    });
+
+    return this.equipmentTypeRepository.save(equipmentType);
+  }
+
+  async updateEquipmentType(
+    id: string,
+    payload: UpdateEquipmentTypeDto,
+  ): Promise<EquipmentType> {
+    const equipmentType = await this.equipmentTypeRepository.findOne({
+      where: { id },
+    });
+
+    if (!equipmentType) {
+      throw new NotFoundException('Equipment type not found');
+    }
+
+    if (payload.name !== undefined) {
+      equipmentType.name = payload.name.trim();
+    }
+    if (payload.code !== undefined) {
+      equipmentType.code = this.normalizeOptionalText(payload.code);
+    }
+    if (payload.description !== undefined) {
+      equipmentType.description = this.normalizeOptionalText(payload.description);
+    }
+    if (payload.category !== undefined) {
+      equipmentType.category = this.normalizeOptionalText(payload.category);
+    }
+    if (payload.isActive !== undefined) {
+      equipmentType.isActive = payload.isActive;
+    }
+
+    const savedType = await this.equipmentTypeRepository.save(equipmentType);
+
+    await this.equipmentRepository
+      .createQueryBuilder()
+      .update(Equipment)
+      .set({ equipmentType: savedType.name })
+      .where('"equipmentTypeId" = :equipmentTypeId', { equipmentTypeId: savedType.id })
+      .execute();
+
+    return savedType;
   }
 
   async getEquipmentByBuilding(
@@ -156,6 +334,7 @@ export class EquipmentService implements OnModuleInit {
     const query = this.equipmentRepository
       .createQueryBuilder('equipment')
       .leftJoinAndSelect('equipment.building', 'building')
+      .leftJoinAndSelect('equipment.equipmentTypeInfo', 'equipmentTypeInfo')
       .where('building.id = :buildingId', { buildingId })
       .orderBy('equipment.equipmentCode', 'ASC');
 
@@ -170,6 +349,7 @@ export class EquipmentService implements OnModuleInit {
     const equipmentQuery = this.equipmentRepository
       .createQueryBuilder('equipment')
       .leftJoinAndSelect('equipment.building', 'building')
+      .leftJoinAndSelect('equipment.equipmentTypeInfo', 'equipmentTypeInfo')
       .orderBy('building.name', 'ASC')
       .addOrderBy('equipment.equipmentCode', 'ASC');
 
@@ -204,9 +384,15 @@ export class EquipmentService implements OnModuleInit {
       throw new NotFoundException('Building not found');
     }
 
+    const equipmentType = await this.findEquipmentTypeOrThrow(
+      payload.equipmentTypeId,
+      payload.equipmentType,
+    );
+
     const equipment = this.equipmentRepository.create({
       building,
-      equipmentType: payload.equipmentType.trim(),
+      equipmentType: equipmentType.name,
+      equipmentTypeInfo: equipmentType,
       equipmentCode: payload.equipmentCode.trim(),
       serialNumber: this.normalizeOptionalText(payload.serialNumber),
       brand: this.normalizeOptionalText(payload.brand),
@@ -224,7 +410,7 @@ export class EquipmentService implements OnModuleInit {
   ): Promise<Equipment> {
     const equipment = await this.equipmentRepository.findOne({
       where: { id },
-      relations: ['building'],
+      relations: ['building', 'equipmentTypeInfo'],
     });
 
     if (!equipment) {
@@ -243,8 +429,13 @@ export class EquipmentService implements OnModuleInit {
       equipment.building = building;
     }
 
-    if (payload.equipmentType !== undefined) {
-      equipment.equipmentType = payload.equipmentType.trim();
+    if (payload.equipmentType !== undefined || payload.equipmentTypeId !== undefined) {
+      const equipmentType = await this.findEquipmentTypeOrThrow(
+        payload.equipmentTypeId,
+        payload.equipmentType ?? equipment.equipmentType,
+      );
+      equipment.equipmentType = equipmentType.name;
+      equipment.equipmentTypeInfo = equipmentType;
     }
     if (payload.equipmentCode !== undefined) {
       equipment.equipmentCode = payload.equipmentCode.trim();

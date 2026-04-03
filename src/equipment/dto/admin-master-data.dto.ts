@@ -86,9 +86,66 @@ export class ListAdminEquipmentQueryDto {
   search?: string;
 }
 
+export class CreateEquipmentTypeDto {
+  @IsString()
+  @MaxLength(80)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  category?: string;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isActive?: boolean;
+}
+
+export class UpdateEquipmentTypeDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  category?: string;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isActive?: boolean;
+}
+
 export class CreateEquipmentAdminDto {
   @IsUUID()
   buildingId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  equipmentTypeId?: string;
 
   @IsString()
   @MaxLength(80)
@@ -128,6 +185,10 @@ export class UpdateEquipmentAdminDto {
   @IsOptional()
   @IsUUID()
   buildingId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  equipmentTypeId?: string;
 
   @IsOptional()
   @IsString()

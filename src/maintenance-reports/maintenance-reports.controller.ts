@@ -1,5 +1,8 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { CreateMaintenanceReportDto } from '../common/dto/create-maintenance-report.dto';
 import { MaintenanceReport } from '../common/entities/maintenance-report.entity';
 import {
@@ -14,6 +17,7 @@ import { MaintenanceReportsService } from './maintenance-reports.service';
 export class MaintenanceReportsController {
   constructor(
     private readonly maintenanceReportsService: MaintenanceReportsService,
+    private readonly auditService: AuditService,
   ) {}
 
   private toAdminReportResponse(report: MaintenanceReport) {
@@ -22,13 +26,22 @@ export class MaintenanceReportsController {
       reportCode: report.reportCode,
       status: report.status,
       priority: report.priority,
-      assignedTo: report.assignedTo,
+      assignedTo: report.assignedTechnician?.name ?? report.assignedTo,
+      assignedTechnician: report.assignedTechnician
+        ? {
+            id: report.assignedTechnician.id,
+            name: report.assignedTechnician.name,
+            team: report.assignedTechnician.team,
+            specialty: report.assignedTechnician.specialty,
+          }
+        : null,
       maintenanceType: report.maintenanceType,
       technicianName: report.technicianName,
       arrivalDateTime: report.arrivalDateTime,
       submittedAt: report.submittedAt,
       updatedAt: report.updatedAt,
       findings: report.findings,
+      checklistResults: report.checklistResults,
       workPerformed: report.workPerformed,
       partsUsed: report.partsUsed,
       remarks: report.remarks,
@@ -70,7 +83,7 @@ export class MaintenanceReportsController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get()
   async findAll(@Query() query: ListMaintenanceReportsQueryDto) {
     const reports = await this.maintenanceReportsService.findAll(query);
@@ -82,7 +95,7 @@ export class MaintenanceReportsController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @Get(':reportCode')
   async findOne(@Param('reportCode') reportCode: string) {
     const report = await this.maintenanceReportsService.findOneByReportCode(reportCode);
@@ -93,13 +106,27 @@ export class MaintenanceReportsController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'dispatcher')
   @Patch(':reportCode/status')
   async updateStatus(
     @Param('reportCode') reportCode: string,
     @Body() payload: UpdateReportStatusDto,
+    @Req() request: { user?: { sub?: string; email?: string; name?: string; role?: string } },
   ) {
     const report = await this.maintenanceReportsService.updateStatus(reportCode, payload);
+
+    await this.auditService.recordFromActor(request.user, {
+      action: 'report.status.updated',
+      resourceType: 'maintenance-report',
+      resourceId: report.id,
+      resourceLabel: report.reportCode,
+      details: {
+        status: report.status,
+        priority: report.priority,
+        note: payload.note?.trim() || null,
+      },
+    });
 
     return {
       success: true,
@@ -108,13 +135,27 @@ export class MaintenanceReportsController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'dispatcher')
   @Patch(':reportCode/assign')
   async assign(
     @Param('reportCode') reportCode: string,
     @Body() payload: AssignMaintenanceReportDto,
+    @Req() request: { user?: { sub?: string; email?: string; name?: string; role?: string } },
   ) {
     const report = await this.maintenanceReportsService.assign(reportCode, payload);
+
+    await this.auditService.recordFromActor(request.user, {
+      action: 'report.assignment.updated',
+      resourceType: 'maintenance-report',
+      resourceId: report.id,
+      resourceLabel: report.reportCode,
+      details: {
+        assignedTo: report.assignedTechnician?.name ?? report.assignedTo,
+        priority: report.priority,
+        note: payload.note?.trim() || null,
+      },
+    });
 
     return {
       success: true,
@@ -123,13 +164,27 @@ export class MaintenanceReportsController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin', 'dispatcher')
   @Post(':reportCode/notes')
   async addNote(
     @Param('reportCode') reportCode: string,
     @Body() payload: CreateMaintenanceReportNoteDto,
+    @Req() request: { user?: { sub?: string; email?: string; name?: string; role?: string } },
   ) {
     const report = await this.maintenanceReportsService.addNote(reportCode, payload);
+
+    await this.auditService.recordFromActor(request.user, {
+      action: 'report.note.added',
+      resourceType: 'maintenance-report',
+      resourceId: report.id,
+      resourceLabel: report.reportCode,
+      details: {
+        noteKind: payload.kind ?? 'system',
+        author: payload.author.trim(),
+        textPreview: payload.text.trim().slice(0, 160),
+      },
+    });
 
     return {
       success: true,

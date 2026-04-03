@@ -1,11 +1,17 @@
 import { randomBytes, randomUUID } from 'crypto';
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateMaintenanceReportDto } from '../common/dto/create-maintenance-report.dto';
 import { Building } from '../common/entities/building.entity';
 import { Equipment } from '../common/entities/equipment.entity';
 import { MaintenanceReport } from '../common/entities/maintenance-report.entity';
+import { Technician } from '../common/entities/technician.entity';
 import {
   AssignMaintenanceReportDto,
   CreateMaintenanceReportNoteDto,
@@ -23,7 +29,7 @@ const DEFAULT_REPORT_PRIORITY = 'Medium';
 type ReportNoteKind = 'system' | 'dispatch' | 'review' | 'finance';
 
 @Injectable()
-export class MaintenanceReportsService {
+export class MaintenanceReportsService implements OnModuleInit {
   constructor(
     @InjectRepository(MaintenanceReport)
     private readonly reportRepository: Repository<MaintenanceReport>,
@@ -31,6 +37,8 @@ export class MaintenanceReportsService {
     private readonly buildingRepository: Repository<Building>,
     @InjectRepository(Equipment)
     private readonly equipmentRepository: Repository<Equipment>,
+    @InjectRepository(Technician)
+    private readonly technicianRepository: Repository<Technician>,
   ) {}
 
   private buildReportCode(): string {
@@ -59,7 +67,8 @@ export class MaintenanceReportsService {
     return this.reportRepository
       .createQueryBuilder('report')
       .leftJoinAndSelect('report.building', 'building')
-      .leftJoinAndSelect('report.equipment', 'equipment');
+      .leftJoinAndSelect('report.equipment', 'equipment')
+      .leftJoinAndSelect('report.assignedTechnician', 'assignedTechnician');
   }
 
   private appendInternalNote(
@@ -84,6 +93,102 @@ export class MaintenanceReportsService {
 
     report.reportCode = await this.generateUniqueReportCode();
     return this.reportRepository.save(report);
+  }
+
+  async onModuleInit() {
+    await this.syncAssignedTechnicianRelations();
+  }
+
+  private async syncAssignedTechnicianRelations(): Promise<void> {
+    const reports = await this.reportRepository.find({
+      relations: ['assignedTechnician'],
+    });
+
+    for (const report of reports) {
+      if (report.assignedTechnician) {
+        continue;
+      }
+
+      const matchedTechnician = await this.resolveTechnicianReference(
+        undefined,
+        report.assignedTo ?? report.technicianName,
+      );
+
+      if (!matchedTechnician) {
+        continue;
+      }
+
+      report.assignedTechnician = matchedTechnician;
+      report.assignedTo = matchedTechnician.name;
+      await this.reportRepository.save(report);
+    }
+  }
+
+  private async resolveTechnicianReference(
+    technicianId?: string,
+    technicianName?: string,
+  ): Promise<Technician | null> {
+    const normalizedName = technicianName?.trim();
+
+    if (technicianId) {
+      const technician = await this.technicianRepository.findOne({
+        where: { id: technicianId },
+      });
+
+      if (!technician) {
+        throw new NotFoundException('Assigned technician was not found in the technician library.');
+      }
+
+      return technician;
+    }
+
+    if (!normalizedName) {
+      return null;
+    }
+
+    return this.technicianRepository
+      .createQueryBuilder('technician')
+      .where('LOWER(technician.name) = LOWER(:name)', { name: normalizedName })
+      .getOne();
+  }
+
+  private normalizeChecklistResults(
+    input: CreateMaintenanceReportDto['checklistResults'],
+    fallbackEquipmentType?: string | null,
+  ) {
+    if (!input) {
+      return null;
+    }
+
+    const categories = input.categories
+      .map((group) => ({
+        category: group.category.trim(),
+        items: group.items
+          .map((item) => ({
+            label: item.label.trim(),
+            checked: Boolean(item.checked),
+          }))
+          .filter((item) => item.label.length > 0),
+      }))
+      .filter((group) => group.category.length > 0 && group.items.length > 0);
+
+    if (categories.length === 0) {
+      return null;
+    }
+
+    const totalCount = categories.reduce((sum, group) => sum + group.items.length, 0);
+    const checkedCount = categories.reduce(
+      (sum, group) => sum + group.items.filter((item) => item.checked).length,
+      0,
+    );
+
+    return {
+      equipmentType: input.equipmentType?.trim() || fallbackEquipmentType || null,
+      templateName: input.templateName?.trim() || null,
+      checkedCount,
+      totalCount,
+      categories,
+    };
   }
 
   async create(payload: CreateMaintenanceReportDto): Promise<MaintenanceReport> {
@@ -113,6 +218,16 @@ export class MaintenanceReportsService {
           dataUrl: photo.dataUrl,
         })) ?? [];
 
+    const matchedTechnician = await this.resolveTechnicianReference(
+      undefined,
+      payload.technicianName,
+    );
+
+    const normalizedChecklistResults = this.normalizeChecklistResults(
+      payload.checklistResults,
+      equipment.equipmentType,
+    );
+
     const report = this.reportRepository.create({
       building,
       equipment,
@@ -122,8 +237,14 @@ export class MaintenanceReportsService {
       technicianName: payload.technicianName,
       status: INITIAL_REPORT_STATUS,
       priority: DEFAULT_REPORT_PRIORITY,
-      assignedTo: payload.technicianName,
-      findings: payload.findings ?? null,
+      assignedTo: matchedTechnician?.name ?? payload.technicianName,
+      assignedTechnician: matchedTechnician,
+      findings:
+        payload.findings ??
+        (normalizedChecklistResults
+          ? `${normalizedChecklistResults.checkedCount}/${normalizedChecklistResults.totalCount} checklist items checked`
+          : null),
+      checklistResults: normalizedChecklistResults,
       workPerformed: payload.workPerformed ?? null,
       partsUsed:
         payload.partsUsed?.map((part) => ({
@@ -241,7 +362,13 @@ export class MaintenanceReportsService {
     payload: AssignMaintenanceReportDto,
   ): Promise<MaintenanceReport> {
     const report = await this.findOneByReportCode(reportCode);
-    report.assignedTo = payload.assignedTo.trim();
+    const assignedTechnician = await this.resolveTechnicianReference(
+      payload.assignedTechnicianId,
+      payload.assignedTo,
+    );
+
+    report.assignedTechnician = assignedTechnician;
+    report.assignedTo = assignedTechnician?.name ?? payload.assignedTo.trim();
     report.priority = payload.priority ?? report.priority ?? DEFAULT_REPORT_PRIORITY;
 
     this.appendInternalNote(report, {

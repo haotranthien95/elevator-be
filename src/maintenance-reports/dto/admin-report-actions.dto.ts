@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -79,6 +80,10 @@ export class UpdateReportStatusDto {
 }
 
 export class AssignMaintenanceReportDto {
+  @IsOptional()
+  @IsUUID()
+  assignedTechnicianId?: string;
+
   @IsString()
   @MaxLength(120)
   assignedTo!: string;
