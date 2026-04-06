@@ -31,12 +31,12 @@ import { UsersModule } from './users/users.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         type: 'postgres' as const,
-        host: configService.get<string>('DB_HOST', 'localhost'),
+        host: configService.get<string>('POSTGRES_HOST', 'localhost'),
         port: Number(configService.get<string>('DB_PORT', '5432')),
-        username: configService.get<string>('DB_USER', 'postgres'),
-        password: configService.get<string>('DB_PASSWORD', 'postgres'),
+        username: configService.get<string>('POSTGRES_USER', 'postgres'),
+        password: configService.get<string>('POSTGRES_PASSWORD', 'postgres'),
         database: configService.get<string>(
-          'DB_NAME',
+          'POSTGRES_DB',
           'maintenance_service_report',
         ),
         schema: configService.get<string>('DB_SCHEMA', 'elevator'),
